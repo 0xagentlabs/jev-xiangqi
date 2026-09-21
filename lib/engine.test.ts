@@ -12,6 +12,7 @@ describe("xiangqi knowledge engine", () => {
     const c = rankCandidates(createBoard(), "red");
     expect(c.length).toBeLessThanOrEqual(10);
     expect(new Set(c.map((m) => m.label)).size).toBe(c.length);
+    expect(c[0].reason).toContain("三层搜索");
   });
   it("looks through a poisoned capture before ranking it", () => {
     const board: Board = Array.from({ length: 10 }, () =>

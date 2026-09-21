@@ -29,9 +29,6 @@ const BOOK: Record<string, string[]> = {
   "B1-C3": ["H10-G8", "B8-E8", "E7-E6"],
   "H1-G3": ["B10-C8", "H8-E8", "E7-E6"],
 };
-// One complete opponent reply is a large improvement over the former static
-// evaluation while keeping an API move comfortably interactive.
-const SEARCH_DEPTH = 1;
 const MATE_SCORE = 1_000_000;
 
 function movePriority(board: Board, move: Move) {
@@ -58,40 +55,43 @@ function evaluate(board: Board, side: Side) {
   if (isInCheck(board, side)) score -= 55;
   return score;
 }
-function search(
-  board: Board,
-  perspective: Side,
-  turn: Side,
-  depth: number,
-  alpha: number,
-  beta: number,
-  ply = 0,
-): number {
-  const moves = legalMoves(board, turn);
-  if (!moves.length)
-    return turn === perspective ? -MATE_SCORE + ply : MATE_SCORE - ply;
-  if (!depth) return evaluate(board, perspective);
-  const max = turn === perspective;
-  let best = max ? -Infinity : Infinity;
-  const ordered = moves.sort(
+function selectiveThreePly(board: Board, perspective: Side) {
+  const opponent = otherSide(perspective);
+  const replies = legalMoves(board, opponent).sort(
     (a, b) => movePriority(board, b) - movePriority(board, a),
   );
-  for (const move of ordered) {
-    const score = search(
-      applyMove(board, move),
-      perspective,
-      otherSide(turn),
-      depth - 1,
-      alpha,
-      beta,
-      ply + 1,
-    );
-    best = max ? Math.max(best, score) : Math.min(best, score);
-    if (max) alpha = Math.max(alpha, best);
-    else beta = Math.min(beta, best);
-    if (beta <= alpha) break;
+  if (!replies.length)
+    return { score: MATE_SCORE, reply: null, continuation: null };
+
+  let worst: { score: number; move: Move; board: Board } | null = null;
+  for (const move of replies) {
+    const afterReply = applyMove(board, move);
+    const continuations = legalMoves(afterReply, perspective);
+    const score = continuations.length
+      ? evaluate(afterReply, perspective)
+      : -MATE_SCORE + 1;
+    if (!worst || score < worst.score)
+      worst = { score, move, board: afterReply };
   }
-  return best;
+
+  const continuations = legalMoves(worst!.board, perspective);
+  let bestContinuation: { score: number; move: Move } | null = null;
+  for (const move of continuations) {
+    const next = applyMove(worst!.board, move);
+    const score = legalMoves(next, opponent).length
+      ? evaluate(next, perspective)
+      : MATE_SCORE - 2;
+    if (!bestContinuation || score > bestContinuation.score)
+      bestContinuation = { score, move };
+  }
+
+  return {
+    score:
+      worst!.score * 0.78 +
+      (bestContinuation?.score ?? worst!.score) * 0.22,
+    reply: worst!.move,
+    continuation: bestContinuation?.move ?? null,
+  };
 }
 export function rankCandidates(
   board: Board,
@@ -120,24 +120,19 @@ export function rankCandidates(
     .map(({ move, target, next, check, label, bookIndex }) => {
       const won =
         target?.kind === "king" || legalMoves(next, otherSide(side)).length === 0;
+      const searched = won ? null : selectiveThreePly(next, side);
       const score = won
         ? MATE_SCORE
-        : search(
-            next,
-            side,
-            otherSide(side),
-            SEARCH_DEPTH,
-            -Infinity,
-            Infinity,
-          ) +
-          (bookIndex >= 0 ? 180 - bookIndex * 15 : 0);
+        : searched!.score + (bookIndex >= 0 ? 180 - bookIndex * 15 : 0);
       const reason = won
         ? "形成绝杀"
         : [
             bookIndex >= 0 ? "经典开局谱着" : "",
             target ? `吃${target.kind}` : "",
             check ? "将军" : "",
-            "局面搜索评估",
+            searched?.reply
+              ? `三层搜索 对手最佳${toLabel(searched.reply)}${searched.continuation ? `，续着${toLabel(searched.continuation)}` : ""}`
+              : "局面搜索评估",
           ]
             .filter(Boolean)
             .join("；");
