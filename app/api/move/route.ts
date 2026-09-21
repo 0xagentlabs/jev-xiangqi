@@ -1,17 +1,153 @@
 import { choice, TypeSafeClient } from "@typesafe-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
-import { Board, COLS, fromLabel, isLegalMove, ROWS, serializeBoard, Side } from "@/lib/game";
+import {
+  Board,
+  COLS,
+  fromLabel,
+  isLegalMove,
+  ROWS,
+  serializeBoard,
+  Side,
+} from "@/lib/game";
 import { rankCandidates } from "@/lib/engine";
-type MoveRequest = { board?: Board; side?: Side; history?: string[]; persona?: "attack" | "defense" };
-function validBoard(value: unknown): value is Board { return Array.isArray(value) && value.length === ROWS && value.every((row) => Array.isArray(row) && row.length === COLS && row.every((cell) => cell === null || (typeof cell === "object" && (cell.side === "red" || cell.side === "black") && ["king", "advisor", "elephant", "horse", "rook", "cannon", "pawn"].includes(cell.kind)))); }
+type MoveRequest = {
+  board?: Board;
+  side?: Side;
+  history?: string[];
+  persona?: "attack" | "defense";
+};
+function validBoard(value: unknown): value is Board {
+  return (
+    Array.isArray(value) &&
+    value.length === ROWS &&
+    value.every(
+      (row) =>
+        Array.isArray(row) &&
+        row.length === COLS &&
+        row.every(
+          (cell) =>
+            cell === null ||
+            (typeof cell === "object" &&
+              (cell.side === "red" || cell.side === "black") &&
+              [
+                "king",
+                "advisor",
+                "elephant",
+                "horse",
+                "rook",
+                "cannon",
+                "pawn",
+              ].includes(cell.kind)),
+        ),
+    )
+  );
+}
 export async function POST(request: NextRequest) {
-  const browserKey = request.headers.get("x-typesafe-api-key")?.trim(); const apiKey = browserKey || process.env.TYPESAFE_API_KEY;
-  if (!apiKey) return NextResponse.json({ code: "JEV_NOT_CONFIGURED", message: "尚未配置官方 TypeSafe API Key。" }, { status: 503 });
-  if (apiKey.length > 512 || /[\r\n]/.test(apiKey)) return NextResponse.json({ message: "API Key 格式无效。" }, { status: 400 });
-  let body: MoveRequest; try { body = await request.json(); } catch { return NextResponse.json({ message: "请求不是有效 JSON。" }, { status: 400 }); }
-  if (!validBoard(body.board) || (body.side !== "red" && body.side !== "black") || (body.history && (!Array.isArray(body.history) || body.history.length > 300 || body.history.some((v) => typeof v !== "string")))) return NextResponse.json({ message: "棋盘、行棋方或历史参数无效。" }, { status: 400 });
-  const candidates = rankCandidates(body.board, body.side, body.history ?? []); if (!candidates.length) return NextResponse.json({ message: "对局已经结束。" }, { status: 409 });
-  if (candidates[0].forced === "win") { const c = candidates[0]; return NextResponse.json({ move: { from: c.from, to: c.to }, label: c.label, confidence: 1, probabilities: [{ label: c.label, probability: 1 }], latencyMs: 0, model: "xiangqi-core + jev-latest", tactic: c.reason }); }
-  const criteria = Object.fromEntries(candidates.map((m) => [m.label, `${m.reason}；搜索评分 ${Math.round(m.score)}`])); const startedAt = Date.now();
-  try { const client = new TypeSafeClient({ apiKey }); const response = await client.systemOne({ model: "jev-latest", state: { game: "Chinese Xiangqi, standard rules", coordinateSystem: "files A-I; red home rank 1; FROM-TO", currentPlayer: body.side, strategy: body.persona === "defense" ? "稳健防守，优先解将、兑子与保护将帅" : "主动进攻，但不得忽略将军与失子", position: serializeBoard(body.board), moveHistory: body.history ?? [], candidates: candidates.map((m) => ({ move: m.label, score: Math.round(m.score), analysis: m.reason })) }, questions: { move: choice("Choose the strongest legal move from the search-ranked candidates. Respect Xiangqi tactics, king safety and material. Return only a listed move.", criteria) } }); const answer = response.answers.move, move = fromLabel(answer.choice); if (!move || !isLegalMove(body.board, body.side, move)) throw new Error("Jev 返回了非法着法"); return NextResponse.json({ move, label: answer.choice, confidence: answer.confidence, probabilities: Object.entries(answer.probabilities ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, probability]) => ({ label, probability })), latencyMs: Date.now() - startedAt, model: "jev-latest", tactic: candidates.find((c) => c.label === answer.choice)?.reason }); } catch (error) { return NextResponse.json({ message: error instanceof Error ? error.message : "Jev 请求失败" }, { status: 502 }); }
+  const browserKey = request.headers.get("x-typesafe-api-key")?.trim();
+  const apiKey = browserKey || process.env.TYPESAFE_API_KEY;
+  if (!apiKey)
+    return NextResponse.json(
+      {
+        code: "JEV_NOT_CONFIGURED",
+        message: "尚未配置官方 TypeSafe API Key。",
+      },
+      { status: 503 },
+    );
+  if (apiKey.length > 512 || /[\r\n]/.test(apiKey))
+    return NextResponse.json(
+      { message: "API Key 格式无效。" },
+      { status: 400 },
+    );
+  let body: MoveRequest;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { message: "请求不是有效 JSON。" },
+      { status: 400 },
+    );
+  }
+  if (
+    !validBoard(body.board) ||
+    (body.side !== "red" && body.side !== "black") ||
+    (body.history &&
+      (!Array.isArray(body.history) ||
+        body.history.length > 300 ||
+        body.history.some((v) => typeof v !== "string")))
+  )
+    return NextResponse.json(
+      { message: "棋盘、行棋方或历史参数无效。" },
+      { status: 400 },
+    );
+  const candidates = rankCandidates(body.board, body.side, body.history ?? []);
+  if (!candidates.length)
+    return NextResponse.json({ message: "对局已经结束。" }, { status: 409 });
+  if (candidates[0].forced === "win") {
+    const c = candidates[0];
+    return NextResponse.json({
+      move: { from: c.from, to: c.to },
+      label: c.label,
+      confidence: 1,
+      probabilities: [{ label: c.label, probability: 1 }],
+      latencyMs: 0,
+      model: "xiangqi-core + jev-latest",
+      tactic: c.reason,
+    });
+  }
+  const criteria = Object.fromEntries(
+    candidates.map((m) => [
+      m.label,
+      `${m.reason}；搜索评分 ${Math.round(m.score)}`,
+    ]),
+  );
+  const startedAt = Date.now();
+  try {
+    const client = new TypeSafeClient({ apiKey });
+    const response = await client.systemOne({
+      model: "jev-latest",
+      state: {
+        game: "Chinese Xiangqi, standard rules",
+        coordinateSystem: "files A-I; red home rank 1; FROM-TO",
+        currentPlayer: body.side,
+        strategy:
+          body.persona === "defense"
+            ? "稳健防守，优先解将、兑子与保护将帅"
+            : "主动进攻，但不得忽略将军与失子",
+        position: serializeBoard(body.board),
+        moveHistory: body.history ?? [],
+        candidates: candidates.map((m) => ({
+          move: m.label,
+          score: Math.round(m.score),
+          analysis: m.reason,
+        })),
+      },
+      questions: {
+        move: choice(
+          "Choose the strongest legal move from the search-ranked candidates. Respect Xiangqi tactics, king safety and material. Return only a listed move.",
+          criteria,
+        ),
+      },
+    });
+    const answer = response.answers.move,
+      move = fromLabel(answer.choice);
+    if (!move || !isLegalMove(body.board, body.side, move))
+      throw new Error("Jev 返回了非法着法");
+    return NextResponse.json({
+      move,
+      label: answer.choice,
+      confidence: answer.confidence,
+      probabilities: Object.entries(answer.probabilities ?? {})
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([label, probability]) => ({ label, probability })),
+      latencyMs: Date.now() - startedAt,
+      model: "jev-latest",
+      tactic: candidates.find((c) => c.label === answer.choice)?.reason,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { message: error instanceof Error ? error.message : "Jev 请求失败" },
+      { status: 502 },
+    );
+  }
 }
