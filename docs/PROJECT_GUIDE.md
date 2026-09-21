@@ -67,4 +67,5 @@ vercel --prod
 
 ## 链接
 
-GitHub 与 Vercel 生产链接将在正式部署后写入本节。
+- GitHub：https://github.com/0xagentlabs/jev-xiangqi
+- Vercel：https://jev-xiangqi.vercel.app
