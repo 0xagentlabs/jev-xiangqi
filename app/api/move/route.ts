@@ -79,18 +79,19 @@ export async function POST(request: NextRequest) {
       { message: "棋盘、行棋方或历史参数无效。" },
       { status: 400 },
     );
-  const candidates = rankCandidates(body.board, body.side, body.history ?? []);
+  const candidates = rankCandidates(body.board, body.side, body.history ?? [], 5);
   if (!candidates.length)
     return NextResponse.json({ message: "对局已经结束。" }, { status: 409 });
-  if (candidates[0].forced === "win") {
+  const decisiveGap = candidates[0].score - (candidates[1]?.score ?? -Infinity);
+  if (candidates[0].forced === "win" || decisiveGap >= 300) {
     const c = candidates[0];
     return NextResponse.json({
       move: { from: c.from, to: c.to },
       label: c.label,
-      confidence: 1,
+      confidence: candidates[0].forced === "win" ? 1 : 0.98,
       probabilities: [{ label: c.label, probability: 1 }],
       latencyMs: 0,
-      model: "xiangqi-core + jev-latest",
+      model: "xiangqi-tactical-core",
       tactic: c.reason,
     });
   }
@@ -123,7 +124,7 @@ export async function POST(request: NextRequest) {
       },
       questions: {
         move: choice(
-          "Choose the strongest legal move from the search-ranked candidates. Respect Xiangqi tactics, king safety and material. Return only a listed move.",
+          "Choose the strongest legal move from the five search-ranked candidates. Follow the supplied score unless the tactical analysis clearly proves a stronger continuation. Prioritize mate, avoiding forced loss, king safety, material, then initiative. Return only a listed move.",
           criteria,
         ),
       },
