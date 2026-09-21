@@ -29,6 +29,18 @@ const BOOK: Record<string, string[]> = {
   "B1-C3": ["H10-G8", "B8-E8", "E7-E6"],
   "H1-G3": ["B10-C8", "H8-E8", "E7-E6"],
 };
+// One complete opponent reply is a large improvement over the former static
+// evaluation while keeping an API move comfortably interactive.
+const SEARCH_DEPTH = 1;
+const MATE_SCORE = 1_000_000;
+
+function movePriority(board: Board, move: Move) {
+  const target = board[move.to.row][move.to.col];
+  return target
+    ? VALUE[target.kind] * 10 -
+        VALUE[board[move.from.row][move.from.col]!.kind]
+    : 0;
+}
 function evaluate(board: Board, side: Side) {
   let score = 0;
   board.forEach((row, r) =>
@@ -53,19 +65,18 @@ function search(
   depth: number,
   alpha: number,
   beta: number,
+  ply = 0,
 ): number {
   const moves = legalMoves(board, turn);
   if (!moves.length)
-    return turn === perspective ? -100000 - depth : 100000 + depth;
+    return turn === perspective ? -MATE_SCORE + ply : MATE_SCORE - ply;
   if (!depth) return evaluate(board, perspective);
   const max = turn === perspective;
   let best = max ? -Infinity : Infinity;
   const ordered = moves.sort(
-    (a, b) =>
-      (board[b.to.row][b.to.col] ? VALUE[board[b.to.row][b.to.col]!.kind] : 0) -
-      (board[a.to.row][a.to.col] ? VALUE[board[a.to.row][a.to.col]!.kind] : 0),
+    (a, b) => movePriority(board, b) - movePriority(board, a),
   );
-  for (const move of ordered.slice(0, 30)) {
+  for (const move of ordered) {
     const score = search(
       applyMove(board, move),
       perspective,
@@ -73,6 +84,7 @@ function search(
       depth - 1,
       alpha,
       beta,
+      ply + 1,
     );
     best = max ? Math.max(best, score) : Math.min(best, score);
     if (max) alpha = Math.max(alpha, best);
@@ -103,15 +115,21 @@ export function rankCandidates(
       return { move, target, next, check, label, bookIndex, ordering };
     })
     .sort((a, b) => b.ordering - a.ordering)
-    .slice(0, 14);
+    .slice(0, 18);
   return shortlist
     .map(({ move, target, next, check, label, bookIndex }) => {
-      const won = target?.kind === "king";
+      const won =
+        target?.kind === "king" || legalMoves(next, otherSide(side)).length === 0;
       const score = won
-        ? 1e6
-        : search(next, side, otherSide(side), 0, -Infinity, Infinity) +
-          (target ? VALUE[target.kind] * 0.25 : 0) +
-          (check ? 35 : 0) +
+        ? MATE_SCORE
+        : search(
+            next,
+            side,
+            otherSide(side),
+            SEARCH_DEPTH,
+            -Infinity,
+            Infinity,
+          ) +
           (bookIndex >= 0 ? 180 - bookIndex * 15 : 0);
       const reason = won
         ? "形成绝杀"
