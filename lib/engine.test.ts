@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { Board, createBoard } from "./game";
-import { rankCandidates } from "./engine";
+import {
+  applyMove,
+  Board,
+  createBoard,
+  fromLabel,
+  isLegalMove,
+  otherSide,
+} from "./game";
+import { OPENING_LINES, rankCandidates } from "./engine";
 describe("xiangqi knowledge engine", () => {
   it("uses book moves initially", () =>
     expect(
@@ -8,6 +15,32 @@ describe("xiangqi knowledge engine", () => {
         m.reason.includes("开局谱"),
       ),
     ).toBe(true));
+  it("keeps every opening repertoire line legal", () => {
+    for (const line of OPENING_LINES) {
+      let board = createBoard();
+      let side = "red" as const | "black";
+      for (const label of line.moves) {
+        const move = fromLabel(label);
+        expect(move, `${line.name}: ${label}`).not.toBeNull();
+        expect(isLegalMove(board, side, move!), `${line.name}: ${label}`).toBe(
+          true,
+        );
+        board = applyMove(board, move!);
+        side = otherSide(side);
+      }
+    }
+  });
+  it("recognizes named branches after the central cannon", () => {
+    const opening = fromLabel("H3-E3")!;
+    const board = applyMove(createBoard(), opening);
+    const candidates = rankCandidates(board, "black", ["H3-E3"], 20);
+    expect(candidates.find((move) => move.label === "H10-G8")?.reason).toContain(
+      "中炮对屏风马",
+    );
+    expect(candidates.find((move) => move.label === "H8-E8")?.reason).toContain(
+      "中炮对顺手炮",
+    );
+  });
   it("returns unique searched candidates", () => {
     const c = rankCandidates(createBoard(), "red");
     expect(c.length).toBeLessThanOrEqual(10);

@@ -24,11 +24,64 @@ const VALUE: Record<PieceKind, number> = {
   advisor: 200,
   pawn: 110,
 };
-const BOOK: Record<string, string[]> = {
-  "": ["B1-C3", "H1-G3", "B3-E3", "H3-E3", "E4-E5"],
-  "B1-C3": ["H10-G8", "B8-E8", "E7-E6"],
-  "H1-G3": ["B10-C8", "H8-E8", "E7-E6"],
-};
+type OpeningLine = { name: string; moves: string[] };
+
+// Short, sound repertoires rather than a single memorized line. Every line is
+// replayed through the rules engine in tests so stale or illegal book data
+// cannot silently enter production.
+export const OPENING_LINES: OpeningLine[] = [
+  {
+    name: "中炮对屏风马",
+    moves: [
+      "H3-E3",
+      "H10-G8",
+      "H1-G3",
+      "B10-C8",
+      "I1-H1",
+      "A10-B10",
+      "C4-C5",
+      "C7-C6",
+    ],
+  },
+  {
+    name: "中炮对顺手炮",
+    moves: ["H3-E3", "H8-E8", "H1-G3", "H10-G8", "I1-H1", "I10-H10"],
+  },
+  {
+    name: "中炮稳健出子",
+    moves: ["H3-E3", "B10-C8", "H1-G3", "H10-G8", "C4-C5", "C7-C6"],
+  },
+  {
+    name: "仙人指路",
+    moves: ["C4-C5", "C7-C6", "H1-G3", "H10-G8", "I1-H1", "I10-H10"],
+  },
+  {
+    name: "飞相局",
+    moves: ["G1-E3", "C7-C6", "H1-G3", "H10-G8", "I1-H1", "I10-H10"],
+  },
+  {
+    name: "起马局",
+    moves: ["H1-G3", "C7-C6", "I1-H1", "H10-G8", "C4-C5", "B10-C8"],
+  },
+  {
+    name: "过宫炮",
+    moves: ["H3-F3", "H10-G8", "H1-G3", "B10-C8", "I1-H1", "A10-B10"],
+  },
+];
+
+function openingMoves(history: string[]) {
+  const matches = OPENING_LINES.filter(
+    (line) =>
+      history.length < line.moves.length &&
+      history.every((move, index) => line.moves[index] === move),
+  );
+  const unique = new Map<string, { name: string; priority: number }>();
+  matches.forEach((line, index) => {
+    const move = line.moves[history.length];
+    if (!unique.has(move)) unique.set(move, { name: line.name, priority: index });
+  });
+  return unique;
+}
 const MATE_SCORE = 1_000_000;
 
 function movePriority(board: Board, move: Move) {
@@ -99,35 +152,36 @@ export function rankCandidates(
   history: string[] = [],
   limit = 10,
 ): Candidate[] {
-  const book = BOOK[history.join(",")] ?? [];
+  const book = openingMoves(history);
   const shortlist = legalMoves(board, side)
     .map((move) => {
       const target = board[move.to.row][move.to.col];
       const next = applyMove(board, move);
       const check = isInCheck(next, otherSide(side));
       const label = toLabel(move);
-      const bookIndex = book.indexOf(label);
+      const bookEntry = book.get(label);
       const ordering =
         (target ? VALUE[target.kind] : 0) +
         (check ? 120 : 0) +
-        (bookIndex >= 0 ? 500 - bookIndex : 0) +
+        (bookEntry ? 500 - bookEntry.priority : 0) +
         evaluate(next, side);
-      return { move, target, next, check, label, bookIndex, ordering };
+      return { move, target, next, check, label, bookEntry, ordering };
     })
     .sort((a, b) => b.ordering - a.ordering)
     .slice(0, 18);
   return shortlist
-    .map(({ move, target, next, check, label, bookIndex }) => {
+    .map(({ move, target, next, check, label, bookEntry }) => {
       const won =
         target?.kind === "king" || legalMoves(next, otherSide(side)).length === 0;
       const searched = won ? null : selectiveThreePly(next, side);
       const score = won
         ? MATE_SCORE
-        : searched!.score + (bookIndex >= 0 ? 180 - bookIndex * 15 : 0);
+        : searched!.score +
+          (bookEntry ? 180 - bookEntry.priority * 15 : 0);
       const reason = won
         ? "形成绝杀"
         : [
-            bookIndex >= 0 ? "经典开局谱着" : "",
+            bookEntry ? `经典开局谱着：${bookEntry.name}` : "",
             target ? `吃${target.kind}` : "",
             check ? "将军" : "",
             searched?.reply

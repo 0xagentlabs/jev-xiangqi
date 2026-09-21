@@ -9,7 +9,7 @@
 - `app/page.tsx`：响应式棋盘、模式切换、BYOK 和决策面板。
 - `app/api/move/route.ts`：输入校验、候选生成、Jev System One 调用与返回着法复核。
 - `lib/game.ts`：10×9 棋盘、全部棋子规则、将军、将帅照面与合法着法。
-- `lib/engine.ts`：开局谱、子力与位置评分、选择性三层搜索、将死识别与候选排序。
+- `lib/engine.ts`：分支开局谱、子力与位置评分、选择性三层搜索、将死识别与候选排序。
 - `lib/*.test.ts`：规则与引擎单元测试。
 
 ## 环境、安装与启动
@@ -57,6 +57,12 @@ vercel --prod
 ```
 
 单测覆盖初始棋子数、坐标编解码、马腿、炮架、将帅照面、谱库候选，以及避免吃毒兵后丢车的战术回归。候选引擎沿用 Jev 五子棋的混合棋力思路：遍历每个候选后的全部合法应手，找到对手最佳应对，再评估己方最佳续着；API 只向 Jev 提供前五个候选，若首选相对次选有明显分差则由战术核心直接落子，避免模型挑选明显弱着。这不是赛事级深度棋力引擎。Vercel 项目需设置 `TYPESAFE_API_KEY`；若不设置，访问者仍可使用页面 BYOK。
+
+## 棋谱策略
+
+内置谱库覆盖中炮对屏风马、中炮对顺手炮、中炮稳健出子、仙人指路、飞相局、起马局和过宫炮。谱库按完整历史前缀匹配分支，谱着只作为搜索先验；若谱着在当前局面战术上吃亏，三层搜索仍可将其降级。所有谱线都由规则引擎逐手验证合法性。
+
+布局分类和策略参考：[世界象棋联合会入门资料](https://www.wxf-xiangqi.org/images/free_download_books/xiangqi_introduction_chessplayers_20150323.pdf)、[中炮与屏风马说明](https://xiangqimaster.com/zh/openings/central-cannon)、[ECCO 开局分类](https://zh.wikipedia.org/wiki/中国象棋开局编号)。
 
 ## 常见问题与安全
 
