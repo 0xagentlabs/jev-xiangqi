@@ -10,3 +10,11 @@
 @media(max-width:420px){.topbar{min-height:116px}.brand>span:not(.brand-mark){font-size:14px}.api-pill{padding:0 10px;font-size:10px}.mode-switch button{font-size:11px}.mode-switch svg{display:none}.game-shell{padding-inline:8px}.xiangqi-wrap{padding-inline:7px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 .key-field>strong{display:block;margin-top:8px;color:#ffc2b8;font-size:11px}
+
+/* Xiangqi pieces sit on the 9 × 10 line intersections, not inside cells. */
+.xiangqi-board{width:calc(100% - clamp(42px,7vw,66px));display:block;background-position:0 0}
+.x-cell{position:absolute;width:max(44px,12.5%);height:max(44px,11.111%);min-width:44px;transform:translate(-50%,-50%)}
+.x-cell:focus-visible{border-radius:50%}
+.x-cell.last{background:transparent;box-shadow:none}
+.x-cell.last:before{content:"";position:absolute;z-index:-1;inset:8%;border-radius:50%;background:rgba(244,211,112,.3);box-shadow:inset 0 0 14px rgba(255,226,137,.4)}
+@media(max-width:760px){.xiangqi-wrap{padding:22px 8px 10px}.xiangqi-board{width:calc(100% - 44px)}.x-cell{min-height:44px}}
