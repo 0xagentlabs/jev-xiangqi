@@ -4,6 +4,7 @@ import {
   BrainCircuit,
   Eye,
   EyeOff,
+  ExternalLink,
   KeyRound,
   RotateCcw,
   Swords,
@@ -84,7 +85,7 @@ export default function Home() {
       [board, selected, turn],
     );
   useEffect(() => {
-    const saved = sessionStorage.getItem("jev_typesafe_api_key") ?? "";
+    const saved = localStorage.getItem("jev_typesafe_api_key") ?? "";
     setJevKey(saved);
     setKeyDraft(saved);
     fetch("/api/config", { cache: "no-store" })
@@ -186,54 +187,41 @@ export default function Home() {
     const value = keyDraft.trim();
     if (!value || value.length > 512)
       return setError("请输入有效的 TypeSafe API Key。");
-    sessionStorage.setItem("jev_typesafe_api_key", value);
+    localStorage.setItem("jev_typesafe_api_key", value);
     setJevKey(value);
     setConfigured(true);
     setShowKeyPrompt(false);
     setError("");
   }
   return (
-    <main>
+    <main className="arena">
       <header className="topbar">
         <a className="brand" href="#game">
           <span className="brand-mark">
             <BrainCircuit size={20} />
           </span>
           <span>Jev 象棋</span>
-          <small>System One Arena</small>
+          <small>AI Strategy Arena</small>
         </a>
-        <button
-          className={`api-pill ${configured ? "ready" : "missing"}`}
-          onClick={() => setShowKeyPrompt(true)}
-        >
-          <span />
-          {configured ? "Jev 已连接" : "配置 API Key"}
-        </button>
+        <div className="hud-actions">
+          <div className="mode-switch" aria-label="对局模式">
+            <button className={mode === "human" ? "active" : ""} aria-pressed={mode === "human"} onClick={() => reset("human", humanSide)}>
+              <UserRound aria-hidden="true" /> <span>人类 vs Jev</span>
+            </button>
+            <button className={mode === "duel" ? "active" : ""} aria-pressed={mode === "duel"} onClick={() => reset("duel", humanSide)}>
+              <Swords aria-hidden="true" /> <span>Jev vs Jev</span>
+            </button>
+          </div>
+          <button
+            className={`api-pill ${configured ? "ready" : "missing"}`}
+            onClick={() => setShowKeyPrompt(true)}
+            aria-label={configured ? "Jev 已连接，管理 API Key" : "配置 API Key"}
+          >
+            <span aria-hidden="true" />
+            {configured ? "Jev 已连接" : "配置 API Key"}
+          </button>
+        </div>
       </header>
-      <section className="hero">
-        <span className="eyebrow">棋谱知识 × 搜索 × 结构化决策</span>
-        <h1>
-          楚河汉界，<em>与 Jev 对弈</em>
-        </h1>
-        <p>
-        完整中国象棋规则、开局谱库与局面搜索，Jev
-          从强候选中作出可解释决策。
-        </p>
-      </section>
-      <section className="mode-switch">
-        <button
-          className={mode === "human" ? "active" : ""}
-          onClick={() => reset("human", humanSide)}
-        >
-          <UserRound size={18} /> 人类 vs Jev
-        </button>
-        <button
-          className={mode === "duel" ? "active" : ""}
-          onClick={() => reset("duel", humanSide)}
-        >
-          <Swords size={18} /> Jev vs Jev
-        </button>
-      </section>
       <section id="game" className="game-shell xiangqi-shell">
         <aside className="panel left-panel">
           <div className="panel-heading">
@@ -252,12 +240,14 @@ export default function Home() {
               <div className="segmented">
                 <button
                   className={humanSide === "red" ? "selected" : ""}
+                  aria-pressed={humanSide === "red"}
                   onClick={() => reset("human", "red")}
                 >
                   红方
                 </button>
                 <button
                   className={humanSide === "black" ? "selected" : ""}
+                  aria-pressed={humanSide === "black"}
                   onClick={() => reset("human", "black")}
                 >
                   黑方
@@ -277,6 +267,11 @@ export default function Home() {
                     : `${sideName(turn)}${isInCheck(board, turn) ? "被将军" : "行棋"}`}
               </strong>
             </div>
+            {thinking && (
+              <span className="thinking-dots" aria-label="Jev 正在思考">
+                <i /><i /><i />
+              </span>
+            )}
           </div>
           {mode === "duel" && (
             <button
@@ -325,6 +320,7 @@ export default function Home() {
                     key={`${r}-${c}`}
                     className={`x-cell ${isSelected ? "selected" : ""} ${target ? "target" : ""} ${last ? "last" : ""}`}
                     onClick={() => clickCell(pos)}
+                    aria-pressed={Boolean(isSelected)}
                     aria-label={`${String.fromCharCode(65 + c)}${10 - r}${piece ? ` ${sideName(piece.side)}${glyph[piece.side][piece.kind]}` : " 空位"}`}
                   >
                     {piece && (
@@ -390,7 +386,7 @@ export default function Home() {
             </>
           ) : (
             <div className="insight-empty">
-              <Bot size={32} />
+              <Bot size={32} aria-hidden="true" />
               <strong>等待 Jev 决策</strong>
               <p>引擎先校验规则并完成谱库、子力、将帅安全和搜索评估。</p>
             </div>
@@ -427,7 +423,7 @@ export default function Home() {
             </span>
             <small>BRING YOUR OWN KEY</small>
             <h2 id="key-title">配置 Jev API Key</h2>
-            <p>密钥仅保存在当前浏览器会话中，并经 HTTPS 发送给服务端代理。</p>
+            <p>密钥仅保存在当前浏览器本地，并经 HTTPS 发送给服务端代理。</p>
             <div className="key-field">
               <label htmlFor="key">TypeSafe API Key</label>
               <div>
@@ -437,6 +433,7 @@ export default function Home() {
                   value={keyDraft}
                   onChange={(e) => setKeyDraft(e.target.value)}
                   autoComplete="off"
+                  aria-describedby={error ? "key-error" : undefined}
                 />
                 <button
                   onClick={() => setShowKey((v) => !v)}
@@ -445,10 +442,14 @@ export default function Home() {
                   {showKey ? <EyeOff /> : <Eye />}
                 </button>
               </div>
+              {error && <strong id="key-error" role="alert">{error}</strong>}
             </div>
             <button className="modal-cta key-submit" onClick={saveKey}>
               保存并开始
             </button>
+            <a className="key-link" href="https://console.typesafe.ai/keys" target="_blank" rel="noreferrer">
+              获取 TypeSafe API Key <ExternalLink size={14} aria-hidden="true" />
+            </a>
           </section>
         </div>
       )}
