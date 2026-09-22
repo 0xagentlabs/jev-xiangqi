@@ -319,6 +319,10 @@ export default function Home() {
                   <button
                     key={`${r}-${c}`}
                     className={`x-cell ${isSelected ? "selected" : ""} ${target ? "target" : ""} ${last ? "last" : ""}`}
+                    style={{
+                      left: `${c * 12.5}%`,
+                      top: `${r * (100 / 9)}%`,
+                    }}
                     onClick={() => clickCell(pos)}
                     aria-pressed={Boolean(isSelected)}
                     aria-label={`${String.fromCharCode(65 + c)}${10 - r}${piece ? ` ${sideName(piece.side)}${glyph[piece.side][piece.kind]}` : " 空位"}`}
